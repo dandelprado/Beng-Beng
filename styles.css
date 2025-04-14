@@ -1,0 +1,94 @@
+/*body, html {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+#ui {
+    position: absolute;
+    display: flex;
+    z-index: 99;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000000bf;
+    color: #fff;
+    flex-direction: column;
+    align-content: center;
+    justify-content: center;
+    align-items: center;
+    pointer-events: all;
+}
+
+.disabled {
+    display: none !important;
+    pointer-events: none !important;
+}
+*/
+
+#threejsContainer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+    overflow: hidden;
+}
+
+.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    text-align: center;
+    font-family: sans-serif;
+}
+.overlay h1 {
+    font-size: 48px;
+    margin-bottom: 20px;
+}
+
+.overlay label {
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+.overlay input {
+    font-size: 20px;
+    padding: 5px;
+    margin-bottom: 20px;
+    width: 100px;
+    text-align: center;
+}
+
+.overlay button {
+    font-size: 24px;
+    padding: 10px 20px;
+    cursor: pointer;
+}
+
+#hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 24px;
+    color: #fff;
+    z-index: 5;
+    font-family: sans-serif;
+}
+
+#hud div {
+    margin-bottom: 5px;
+}
