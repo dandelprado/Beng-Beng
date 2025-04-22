@@ -9,7 +9,7 @@ const MOVE_SPEED         = 0.2;
 const BULLET_SPEED       = 7;
 const ENEMY_SPEED        = 1.0;    
 const ENEMY_RADIUS       = 1;      
-const PLAYER_RADIUS      = 0.5;   
+const PLAYER_RADIUS      = 0.5;    
 
 let enemyShotCount = 0;
 let startTime      = null;
@@ -137,6 +137,7 @@ document.addEventListener('keyup', e => {
 });
 
 function checkCollision(pos, entity = null, isEnemy = false) {
+  // Check maze walls (bounding box with adjusted radius)
   const radius = isEnemy ? ENEMY_RADIUS : PLAYER_RADIUS;
   for (const wall of mazeWalls) {
     const dx = Math.abs(pos.x - wall.position.x);
@@ -156,6 +157,12 @@ function checkCollision(pos, entity = null, isEnemy = false) {
         return true;
       }
     }
+  } else if (!isEnemy) {
+    for (const enemy of enemies) {
+      if (pos.distanceTo(enemy.position) < PLAYER_RADIUS + ENEMY_RADIUS) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -171,7 +178,6 @@ function updateMovement() {
   if (keys.a) next.addScaledVector(right, -MOVE_SPEED);
   if (keys.d) next.addScaledVector(right,  MOVE_SPEED);
 
-  // Clamp inside walls
   const offset = halfThick + PLAYER_RADIUS;
   next.x = Math.max(bounds.minX + offset, Math.min(bounds.maxX - offset, next.x));
   next.z = Math.max(bounds.minZ + offset, Math.min(bounds.maxZ - offset, next.z));
