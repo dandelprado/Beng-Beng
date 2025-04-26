@@ -1,16 +1,11 @@
-
-// main.js
-
 import * as THREE from 'three';
 import { PointerLockControls } from 'https://unpkg.com/three@0.153.0/examples/jsm/controls/PointerLockControls.js';
 import { Sky } from 'https://unpkg.com/three@0.153.0/examples/jsm/objects/Sky.js';
-import { MathUtils } from './MathUtils.js';
+import { degToRad } from './MathUtils.js';
 
-//
 // ————— Constants —————
-//
-const INITIAL_SPAWN       = new THREE.Vector3(0, 2, 10);
-const SAFE_SPAWN_DISTANCE = 15;
+const INITIAL_SPAWN       = new THREE.Vector3(0, 2, 0);
+const SAFE_SPAWN_DISTANCE = 10;
 const MOVE_SPEED          = 0.2;
 const BULLET_SPEED        = 7;
 const ENEMY_SPEED         = 1.0;
@@ -18,282 +13,323 @@ const ENEMY_RADIUS        = 1;
 const PLAYER_RADIUS       = 0.5;
 const bounds = { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
 
-//
-// ————— Maze Generator with Rooms & Loops —————
-//
+// ————— Dynamic Maze Generator —————
+function generateDynamicMaze(areaSize) {
+  const cellSize = 4; // Larger cells for more open space
+  const cols = Math.floor(areaSize / cellSize);
+  const rows = cols;
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(0)); // 0 = empty, 1 = wall, 2 = platform
+  const areas = [];
+  const padding = 1;
 
-// perfect‐maze using Prim’s algorithm
-function generatePerfectMaze(rows, cols) {
-  const grid = Array.from({ length: rows }, () => Array(cols).fill(1));
-  const walls = [];
-  const start = { r: 1, c: 1 };
-  grid[start.r][start.c] = 0;
-  [[2,0],[-2,0],[0,2],[0,-2]].forEach(([dr,dc]) => {
-    walls.push({ r: start.r+dr, c: start.c+dc, pr: start.r, pc: start.c });
-  });
-  while (walls.length) {
-    const idx = Math.floor(Math.random()*walls.length);
-    const { r, c, pr, pc } = walls.splice(idx,1)[0];
-    if (r<1||c<1||r>=rows-1||c>=cols-1) continue;
-    if (grid[r][c]===1) {
-      grid[pr + (r-pr)/2][pc + (c-pc)/2] = 0;
-      grid[r][c] = 0;
-      [[2,0],[-2,0],[0,2],[0,-2]].forEach(([dr,dc]) => {
-        walls.push({ r:r+dr, c:c+dc, pr:r, pc:c });
-      });
-    }
-  }
-  return grid;
-}
-
-// carve a few loops by removing interior walls
-function carveLoops(grid, rows, cols, percent=0.02) {
-  const loops = Math.floor(rows*cols*percent);
-  for (let i=0;i<loops;i++) {
-    let attempts=0;
-    while (attempts<50) {
-      const r = 1 + Math.floor(Math.random()*(rows-2));
-      const c = 1 + Math.floor(Math.random()*(cols-2));
-      if (grid[r][c]===1 &&
-          ((grid[r-1][c]===0 && grid[r+1][c]===0) ||
-           (grid[r][c-1]===0 && grid[r][c+1]===0))) {
-        grid[r][c] = 0;
-        break;
+  function isValidRect(x, z, w, h, buffer = 1) {
+    if (x < padding || x + w >= cols - padding || z < padding || z + h >= rows - padding) return false;
+    for (let r = z - buffer; r <= z + h + buffer; r++) {
+      for (let c = x - buffer; c <= x + w + buffer; c++) {
+        if (r >= 0 && r < rows && c >= 0 && c < cols && grid[r][c] !== 0) return false;
       }
-      attempts++;
     }
+    return true;
   }
-}
 
-// carve some random rectangular rooms
-function carveRooms(grid, rows, cols, roomCount=5) {
-  for (let i=0;i<roomCount;i++) {
-    const roomW = 3 + 2*Math.floor(Math.random()*3); // 3,5,7
-    const roomH = 3 + 2*Math.floor(Math.random()*3);
-    const r0 = 1 + Math.floor(Math.random()*(rows-roomH-2));
-    const c0 = 1 + Math.floor(Math.random()*(cols-roomW-2));
-    for (let rr=r0; rr<r0+roomH; rr++) {
-      for (let cc=c0; cc<c0+roomW; cc++) {
-        grid[rr][cc] = 0;
+  // Place varied areas
+  const areaCount = 5 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < areaCount; i++) {
+    const isRoom = Math.random() < 0.5;
+    const w = isRoom ? 3 + Math.floor(Math.random() * 3) : 5 + Math.floor(Math.random() * 4);
+    const h = isRoom ? 3 + Math.floor(Math.random() * 3) : 5 + Math.floor(Math.random() * 4);
+    const x = padding + Math.floor(Math.random() * (cols - w - padding * 2));
+    const z = padding + Math.floor(Math.random() * (rows - h - padding * 2));
+    if (isValidRect(x, z, w, h)) {
+      areas.push({ x, z, width: w, height: h, isRoom });
+      if (isRoom) {
+        for (let c = x - 1; c <= x + w; c++) {
+          grid[z - 1][c] = 1;
+          grid[z + h][c] = 1;
+        }
+        for (let r = z - 1; r <= z + h; r++) {
+          grid[r][x - 1] = 1;
+          grid[r][x + w] = 1;
+        }
       }
     }
   }
+
+  // Connect areas with corridors
+  for (let i = 0; i < areas.length; i++) {
+    const a = areas[i];
+    const b = areas[(i + 1) % areas.length];
+    const cx1 = a.x + Math.floor(a.width / 2);
+    const cz1 = a.z + Math.floor(a.height / 2);
+    const cx2 = b.x + Math.floor(b.width / 2);
+    const cz2 = b.z + Math.floor(b.height / 2);
+    const z = Math.round((cz1 + cz2) / 2);
+    for (let x = Math.min(cx1, cx2); x <= Math.max(cx1, cx2); x++) {
+      if (grid[z][x] === 0) grid[z][x] = 0;
+    }
+    const x = Math.round((cx1 + cx2) / 2);
+    for (let r = Math.min(cz1, cz2); r <= Math.max(cz1, cz2); r++) {
+      if (grid[r][x] === 0) grid[r][x] = 0;
+    }
+    if (a.isRoom) {
+      const doorX = a.x + Math.floor(Math.random() * a.width);
+      const doorZ = a.z + Math.floor(Math.random() * a.height);
+      if (Math.random() < 0.5) {
+        grid[a.z - 1][doorX] = 0;
+        grid[a.z + a.height][doorX] = 0;
+      } else {
+        grid[doorZ][a.x - 1] = 0;
+        grid[doorZ][a.x + a.width] = 0;
+      }
+    }
+  }
+
+  // Sparse walls for cover
+  const wallCount = Math.floor(rows * cols * 0.1);
+  for (let i = 0; i < wallCount; i++) {
+    const r = padding + Math.floor(Math.random() * (rows - padding * 2));
+    const c = padding + Math.floor(Math.random() * (cols - padding * 2));
+    if (grid[r][c] === 0 && Math.random() < 0.3) grid[r][c] = 1;
+  }
+
+  // Elevated platforms
+  const platformCount = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < platformCount; i++) {
+    const w = 3 + Math.floor(Math.random() * 3);
+    const h = 3 + Math.floor(Math.random() * 3);
+    const x = padding + Math.floor(Math.random() * (cols - w - padding * 2));
+    const z = padding + Math.floor(Math.random() * (rows - h - padding * 2));
+    if (isValidRect(x, z, w, h, 2)) {
+      for (let r = z; r < z + h; r++) {
+        for (let c = x; c < x + w; c++) {
+          grid[r][c] = 2;
+        }
+      }
+    }
+  }
+
+  // Ensure connectivity
+  function isConnected() {
+    const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+    const stack = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (grid[r][c] === 0) { stack.push([r, c]); break; }
+      }
+      if (stack.length) break;
+    }
+    while (stack.length) {
+      const [r, c] = stack.pop();
+      if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+      if (visited[r][c] || grid[r][c] === 1) continue;
+      visited[r][c] = true;
+      stack.push([r+1,c],[r-1,c],[r,c+1],[r,c-1]);
+    }
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (grid[r][c] === 0 && !visited[r][c]) return false;
+      }
+    }
+    return true;
+  }
+  if (!isConnected()) {
+    const r = padding + Math.floor(Math.random() * (rows - padding * 2));
+    for (let c = padding; c < cols - padding; c++) {
+      if (grid[r][c] === 0) grid[r][c] = 0;
+    }
+  }
+
+  const offsetX = -areaSize / 2;
+  const offsetZ = -areaSize / 2;
+  return { grid, offsetX, offsetZ, areas };
 }
 
-// full generator: perfect maze + loops + rooms
-function generateMazeWithFeatures(rows, cols) {
-  const grid = generatePerfectMaze(rows, cols);
-  carveLoops(grid, rows, cols, 0.03);
-  carveRooms(grid, rows, cols, Math.floor((rows*cols)/200));
-  return grid;
-}
-
-//
 // ————— Scene Setup —————
-//
 const textureLoader = new THREE.TextureLoader();
-const enemyTexture  = textureLoader.load('assets/alien.jpg');
+const enemyTexture = textureLoader.load('assets/alien.jpg');
 const groundTexture = textureLoader.load('assets/floor.jpg');
-const mazeTexture   = textureLoader.load('assets/maze.jpg');
-const wallTexture   = textureLoader.load('assets/wall.png');
+const mazeTexture = textureLoader.load('assets/maze.jpg');
+const wallTexture = textureLoader.load('assets/wall.png');
 wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
 wallTexture.repeat.set(10, 2);
 
-const scene  = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 2000);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
 camera.position.copy(INITIAL_SPAWN);
-camera.lookAt(0,0,0);
 
-const renderer = new THREE.WebGLRenderer({ antialias:true });
-renderer.setPixelRatio(Math.min(devicePixelRatio,1));
-renderer.setSize(innerWidth, innerHeight);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+renderer.setSize(window.innerWidth, window.innerHeight);
 document.getElementById('threejsContainer').appendChild(renderer.domElement);
 
-// sky
+// Resize handler
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// sky & lights
 const sky = new Sky();
 sky.scale.setScalar(450000);
-const phi   = MathUtils.degToRad(90), theta = MathUtils.degToRad(180);
-sky.material.uniforms['sunPosition'].value.setFromSphericalCoords(1,phi,theta);
+sky.material.uniforms['sunPosition'].value.setFromSphericalCoords(1, degToRad(90), degToRad(180));
 scene.add(sky);
-
-// lights
-scene.add(new THREE.AmbientLight(0xffffff,0.05));
-const dirLight = new THREE.DirectionalLight(0xffffff,1);
-dirLight.position.set(10,20,10);
+scene.add(new THREE.AmbientLight(0xffffff, 0.05));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+dirLight.position.set(10, 20, 10);
 scene.add(dirLight);
-scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
-const bulletLight = new THREE.PointLight(0xffffff,1,10);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
+const bulletLight = new THREE.PointLight(0xffffff, 1, 10);
 scene.add(bulletLight);
 
-// controls
+// controls & UI
 const controls = new PointerLockControls(camera, renderer.domElement);
-const ui       = document.getElementById('ui');
-let isPaused   = false;
-ui.addEventListener('click',() => { if(!isPaused) controls.lock(); });
-document.addEventListener('keydown', e => {
-  if(e.key==='Backspace' && !isPaused) controls.lock();
-});
-controls.addEventListener('lock',  ()=> ui.classList.add('disabled'));
-controls.addEventListener('unlock',()=> ui.classList.remove('disabled'));
+const ui = document.getElementById('ui');
+let isPaused = false;
+ui.addEventListener('click', () => { if (!isPaused) controls.lock(); });
+controls.addEventListener('lock', () => ui.classList.add('disabled'));
+controls.addEventListener('unlock', () => ui.classList.remove('disabled'));
 scene.add(controls.getObject());
 
 // ground
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(bounds.maxX-bounds.minX, bounds.maxZ-bounds.minZ),
-  new THREE.MeshStandardMaterial({ map:groundTexture })
+  new THREE.PlaneGeometry(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ),
+  new THREE.MeshStandardMaterial({ map: groundTexture })
 );
-ground.rotation.x = -Math.PI/2;
+ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
 
-//
-// ————— Dynamic Maze Construction —————
+// maze construction
 const mazeWalls = [];
-const mazeMat   = new THREE.MeshStandardMaterial({ map:mazeTexture });
-const mazeGeo   = new THREE.BoxGeometry(2,2,2);
-
-const cellSize = 4;
-let cols = Math.floor((bounds.maxX-bounds.minX)/cellSize);
-let rows = Math.floor((bounds.maxZ-bounds.minZ)/cellSize);
-if (cols%2===0) cols--;
-if (rows%2===0) rows--;
-
-const mazeGrid = generateMazeWithFeatures(rows, cols);
-const offsetX = bounds.minX + ((bounds.maxX-bounds.minX) - (cols-1)*cellSize)/2;
-const offsetZ = bounds.minZ + ((bounds.maxZ-bounds.minZ) - (rows-1)*cellSize)/2;
-
-for (let r=0; r<rows; r++) {
-  for (let c=0; c<cols; c++) {
+const mazeMat = new THREE.MeshStandardMaterial({ map: mazeTexture });
+const mazeGeo = new THREE.BoxGeometry(4, 2, 4);
+const platformMat = new THREE.MeshStandardMaterial({ map: mazeTexture });
+const platformGeo = new THREE.BoxGeometry(4, 1, 4);
+const areaSize = 100;
+const { grid: mazeGrid, offsetX, offsetZ, areas } = generateDynamicMaze(areaSize);
+for (let r = 0; r < mazeGrid.length; r++) {
+  for (let c = 0; c < mazeGrid[0].length; c++) {
     if (mazeGrid[r][c] === 1) {
       const wall = new THREE.Mesh(mazeGeo, mazeMat);
-      wall.position.set(
-        offsetX + c*cellSize,
-        1,
-        offsetZ + r*cellSize
-      );
+      wall.position.set(offsetX + c * 4, 1, offsetZ + r * 4);
       scene.add(wall);
       mazeWalls.push(wall);
+    } else if (mazeGrid[r][c] === 2) {
+      const platform = new THREE.Mesh(platformGeo, platformMat);
+      platform.position.set(offsetX + c * 4, 1.5, offsetZ + r * 4);
+      scene.add(platform);
+      mazeWalls.push(platform);
     }
   }
 }
+// perimeter walls
+(function() {
+  const wallHeight = 4;
+  const wallThickness = 2;
+  const halfThick = wallThickness / 2;
+  function makeWall(w, h, t, x, y, z) {
+    const mat = new THREE.MeshStandardMaterial({ map: wallTexture });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, t), mat);
+    mesh.position.set(x, y, z);
+    scene.add(mesh);
+    mazeWalls.push(mesh);
+  }
+  makeWall(bounds.maxX - bounds.minX, wallHeight, wallThickness, 0, wallHeight / 2, bounds.maxZ - halfThick);
+  makeWall(bounds.maxX - bounds.minX, wallHeight, wallThickness, 0, wallHeight / 2, bounds.minZ + halfThick);
+  makeWall(wallThickness, wallHeight, bounds.maxZ - bounds.minZ, bounds.maxX - halfThick, wallHeight / 2, 0);
+  makeWall(wallThickness, wallHeight, bounds.maxZ - bounds.minZ, bounds.minX + halfThick, wallHeight / 2, 0);
+})();
 
-//
-// ————— Boundary Walls —————
-const wallThickness = 2, halfThick = wallThickness/2, wallHeight = 4;
-function makeWall(w,h,t,x,y,z) {
-  const mat = new THREE.MeshStandardMaterial({ map:wallTexture });
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,t), mat);
-  mesh.position.set(x,y,z);
-  scene.add(mesh);
-}
-makeWall(bounds.maxX-bounds.minX, wallHeight, wallThickness,  0, wallHeight/2, bounds.maxZ-halfThick);
-makeWall(bounds.maxX-bounds.minX, wallHeight, wallThickness,  0, wallHeight/2, bounds.minZ+halfThick);
-makeWall(wallThickness, wallHeight, bounds.maxZ-bounds.minZ, bounds.maxX-halfThick, wallHeight/2, 0);
-makeWall(wallThickness, wallHeight, bounds.maxZ-bounds.minZ, bounds.minX+halfThick, wallHeight/2, 0);
-
-//
-// ————— Pause Screen —————
-const pauseScreen = document.createElement('div');
-pauseScreen.id = 'pauseScreen';
-pauseScreen.style.cssText = `
-  position:absolute;top:0;left:0;width:100%;height:100%;
-  background:rgba(0,0,0,0.7);display:none;justify-content:center;
-  align-items:center;flex-direction:column;color:white;
-  font-family:Arial,sans-serif;font-size:24px;
-`;
-pauseScreen.innerHTML = `
-  <div>Game Paused</div>
-  <button id="resumeButton" style="
-    margin-top:20px;padding:10px 20px;font-size:18px;cursor:pointer;
-  ">Resume</button>
-`;
-document.body.appendChild(pauseScreen);
-
-//
-// ————— Input Handling —————
-const keys = { w:false, a:false, s:false, d:false };
+// input
+const keys = { w: false, a: false, s: false, d: false };
 document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (keys.hasOwnProperty(k)) { e.preventDefault(); keys[k]=true; }
+  if (keys.hasOwnProperty(k)) { e.preventDefault(); keys[k] = true; }
 });
 document.addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
-  if (keys.hasOwnProperty(k)) { e.preventDefault(); keys[k]=false; }
+  if (keys.hasOwnProperty(k)) { e.preventDefault(); keys[k] = false; }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !isPaused) controls.lock();
 });
 
-//
-// ————— Collision Detection —————
-function checkCollision(pos, entity=null, isEnemy=false) {
+// collision
+function checkCollision(pos, entity = null, isEnemy = false) {
   const radius = isEnemy ? ENEMY_RADIUS : PLAYER_RADIUS;
   for (const wall of mazeWalls) {
     const dx = Math.abs(pos.x - wall.position.x);
     const dz = Math.abs(pos.z - wall.position.z);
-    if (dx < 1 + radius && dz < 1 + radius) return true;
+    if (dx < 2 + radius && dz < 2 + radius) return true;
   }
   if (isEnemy && entity) {
-    const playerPos = controls.getObject().position;
-    if (pos.distanceTo(playerPos) < ENEMY_RADIUS+PLAYER_RADIUS) return true;
+    const pPos = controls.getObject().position;
+    if (pos.distanceTo(pPos) < ENEMY_RADIUS + PLAYER_RADIUS) return true;
     for (const other of enemies) {
-      if (other!==entity && pos.distanceTo(other.position) < ENEMY_RADIUS*2) return true;
+      if (other !== entity && pos.distanceTo(other.position) < ENEMY_RADIUS * 2) return true;
     }
   } else if (!isEnemy) {
-    for (const enemy of enemies) {
-      if (pos.distanceTo(enemy.position) < PLAYER_RADIUS+ENEMY_RADIUS) return true;
+    for (const en of enemies) {
+      if (pos.distanceTo(en.position) < PLAYER_RADIUS + ENEMY_RADIUS) return true;
     }
   }
   return false;
 }
 
-//
-// ————— Movement & Game Logic —————
+// movement
 function updateMovement() {
   if (!controls.isLocked || isPaused) return;
-  const dir   = camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
-  const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0)).normalize();
-  const next  = controls.getObject().position.clone();
-  if (keys.w) next.addScaledVector(dir,  MOVE_SPEED);
+  const dir = camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
+  const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+  const next = controls.getObject().position.clone();
+  if (keys.w) next.addScaledVector(dir, MOVE_SPEED);
   if (keys.s) next.addScaledVector(dir, -MOVE_SPEED);
   if (keys.a) next.addScaledVector(right, -MOVE_SPEED);
-  if (keys.d) next.addScaledVector(right,  MOVE_SPEED);
-  const offset = halfThick + PLAYER_RADIUS;
-  next.x = Math.max(bounds.minX+offset, Math.min(bounds.maxX-offset, next.x));
-  next.z = Math.max(bounds.minZ+offset, Math.min(bounds.maxZ-offset, next.z));
+  if (keys.d) next.addScaledVector(right, MOVE_SPEED);
+  const offset = (2/2) + PLAYER_RADIUS;
+  next.x = Math.max(bounds.minX + offset, Math.min(bounds.maxX - offset, next.x));
+  next.z = Math.max(bounds.minZ + offset, Math.min(bounds.maxZ - offset, next.z));
   if (!checkCollision(next)) controls.getObject().position.copy(next);
 }
+
+// enemies & bullets
+const enemies = [];
+let enemyShotCount = 0;
+let totalEnemies = 20;
+const bullets = [];
+const clock = new THREE.Clock();
+let startTime = null;
+let gameOver = false;
 
 function updateEnemyMovement(dt) {
   if (isPaused) return;
   enemies.forEach(enemy => {
-    const target   = enemy.userData.target;
-    const toTarget = target.clone().sub(enemy.position).setY(0);
-    const dist     = toTarget.length();
-    const nextPos  = enemy.position.clone().addScaledVector(toTarget.clone().normalize(), ENEMY_SPEED*dt);
-    if (dist<0.5 || checkCollision(nextPos,enemy,true)) {
-      let newT, at=0;
-      do { newT = getRandomTarget(); at++; }
-      while(checkCollision(newT,enemy,true)&&at<10);
+    const target = enemy.userData.target.clone().sub(enemy.position).setY(0);
+    const dist = target.length();
+    const nextPos = enemy.position.clone().addScaledVector(target.clone().normalize(), ENEMY_SPEED * dt);
+    if (dist < 0.5 || checkCollision(nextPos, enemy, true)) {
+      let attempts = 0;
+      let newT;
+      do { newT = getRandomTarget(); attempts++; } while (checkCollision(newT, enemy, true) && attempts < 10);
       enemy.userData.target = newT;
       return;
     }
-    const speed = ENEMY_SPEED*(0.8+Math.random()*0.4);
-    toTarget.normalize();
-    const wander = new THREE.Vector3(Math.random()*0.2-0.1,0,Math.random()*0.2-0.1);
-    toTarget.add(wander).normalize();
-    nextPos.copy(enemy.position).addScaledVector(toTarget, speed*dt);
-    nextPos.x = Math.max(bounds.minX+halfThick+ENEMY_RADIUS, Math.min(bounds.maxX-halfThick-ENEMY_RADIUS, nextPos.x));
-    nextPos.z = Math.max(bounds.minZ+halfThick+ENEMY_RADIUS, Math.min(bounds.maxZ-halfThick-ENEMY_RADIUS, nextPos.z));
-    if (!checkCollision(nextPos,enemy,true)) enemy.position.copy(nextPos);
+    const speed = ENEMY_SPEED * (0.8 + Math.random() * 0.4);
+    target.normalize();
+    const wander = new THREE.Vector3(Math.random() * 0.2 - 0.1, 0, Math.random() * 0.2 - 0.1);
+    target.add(wander).normalize();
+    const next = enemy.position.clone().addScaledVector(target, speed * dt);
+    next.x = Math.max(bounds.minX + 1 + ENEMY_RADIUS, Math.min(bounds.maxX - 1 - ENEMY_RADIUS, next.x));
+    next.z = Math.max(bounds.minZ + 1 + ENEMY_RADIUS, Math.min(bounds.maxZ - 1 - ENEMY_RADIUS, next.z));
+    if (!checkCollision(next, enemy, true)) enemy.position.copy(next);
   });
 }
 
-const bullets = [];
+const bulletGeo = new THREE.SphereGeometry(0.2, 18, 18);
+const bulletMat = new THREE.MeshStandardMaterial({ color: 0xe52b50, metalness: 1, roughness: 0.25, emissive: 0xe52b50, emissiveIntensity: 1 });
 const gunshot = new Audio('assets/audio/gunshot.mp3');
-const bulletGeo = new THREE.SphereGeometry(0.2,18,18);
-const bulletMat = new THREE.MeshStandardMaterial({
-  color:0xe52b50, metalness:1, roughness:0.25,
-  emissive:0xe52b50, emissiveIntensity:1
-});
 
-function shootBullet() {
+document.addEventListener('click', () => {
   if (!controls.isLocked || isPaused) return;
   gunshot.currentTime = 0;
   const b = new THREE.Mesh(bulletGeo, bulletMat);
@@ -303,127 +339,165 @@ function shootBullet() {
   bullets.push(b);
   scene.add(b);
   bulletLight.position.copy(b.position);
-}
-document.addEventListener('click', shootBullet);
+});
 
 function updateBullets() {
   if (isPaused) return;
-  for (let i=bullets.length-1; i>=0; i--) {
-    const b = bullets[i], prev = b.position.clone();
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    const prev = b.position.clone();
     b.position.add(b.velocity);
     bulletLight.position.copy(b.position);
     const rc = new THREE.Raycaster(prev, b.velocity.clone().normalize());
     const hits = rc.intersectObjects(enemies);
     if (hits.length && hits[0].distance <= b.velocity.length()) {
-      if (camera.getWorldDirection(new THREE.Vector3())
-          .angleTo(hits[0].object.position.clone().sub(camera.position).normalize())<0.2) {
-        scene.remove(hits[0].object);
-        enemies.splice(enemies.indexOf(hits[0].object),1);
-        enemyShotCount++;
-        document.getElementById("counter").innerText = `Kills: ${enemyShotCount}`;
-      }
+      scene.remove(hits[0].object);
+      enemies.splice(enemies.indexOf(hits[0].object), 1);
       scene.remove(b);
-      bullets.splice(i,1);
+      bullets.splice(i, 1);
+      enemyShotCount++;
+      document.getElementById('counter').innerText = `Kills: ${enemyShotCount}`;
       continue;
     }
-    if (b.position.length()>100) {
+    if (b.position.length() > 100) {
       scene.remove(b);
-      bullets.splice(i,1);
+      bullets.splice(i, 1);
     }
   }
 }
 
 function getRandomTarget() {
-  const pad = ENEMY_RADIUS+1;
-  const x = Math.random()*(bounds.maxX-bounds.minX-pad*2)+bounds.minX+pad;
-  const z = Math.random()*(bounds.maxZ-bounds.minZ-pad*2)+bounds.minZ+pad;
-  return new THREE.Vector3(x,1,z);
+  const empty = [];
+  for (let r = 0; r < mazeGrid.length; r++) {
+    for (let c = 0; c < mazeGrid[0].length; c++) {
+      if (mazeGrid[r][c] === 0) empty.push({ r, c });
+    }
+  }
+  if (!empty.length) return new THREE.Vector3(0, 1, 0);
+  const cell = empty[Math.floor(Math.random() * empty.length)];
+  return new THREE.Vector3(
+    offsetX + cell.c * 4 + (Math.random() - 0.5) * 2,
+    1,
+    offsetZ + cell.r * 4 + (Math.random() - 0.5) * 2
+  );
 }
 
 function spawnPlayer() {
-  controls.getObject().position.copy(INITIAL_SPAWN);
+  const empty = [];
+  for (let r = 0; r < mazeGrid.length; r++) {
+    for (let c = 0; c < mazeGrid[0].length; c++) {
+      if (mazeGrid[r][c] === 0) empty.push({ r, c });
+    }
+  }
+  let pos = null;
+  for (let i = 0; i < 50; i++) {
+    const cell = empty[Math.floor(Math.random() * empty.length)];
+    const x = offsetX + cell.c * 4 + (Math.random() - 0.5) * 2;
+    const z = offsetZ + cell.r * 4 + (Math.random() - 0.5) * 2;
+    const cand = new THREE.Vector3(x, 2, z);
+    if (!checkCollision(cand)) { pos = cand; break; }
+  }
+  if (!pos) {
+    pos = INITIAL_SPAWN.clone();
+    console.warn('spawnPlayer: fallback to INITIAL_SPAWN');
+  }
+  controls.getObject().position.copy(pos);
 }
 
-const enemies = [];
-let enemyShotCount = 0, totalEnemies = 20;
-
 function createEnemies(count) {
-  enemies.forEach(e=>scene.remove(e));
-  enemies.length=0;
-  for (let i=0;i<count;i++) {
-    let pos, at=0;
-    do { pos = getRandomTarget(); at++; }
-    while((pos.distanceTo(INITIAL_SPAWN)<SAFE_SPAWN_DISTANCE||checkCollision(pos,null,true))&&at<50);
+  // clear out old enemies
+  enemies.forEach(e => scene.remove(e));
+  enemies.length = 0;
+
+  // build a list of all empty cells
+  const emptyCells = [];
+  for (let r = 0; r < mazeGrid.length; r++) {
+    for (let c = 0; c < mazeGrid[0].length; c++) {
+      if (mazeGrid[r][c] === 0) emptyCells.push({ r, c });
+    }
+  }
+
+  let attempts = 0;
+  const maxAttempts = count * 5; // give a few tries per enemy
+  while (enemies.length < count && attempts < maxAttempts) {
+    attempts++;
+    const cell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    const x = offsetX + cell.c * 4 + (Math.random() - 0.5) * 2;
+    const z = offsetZ + cell.r * 4 + (Math.random() - 0.5) * 2;
+    const pos = new THREE.Vector3(x, 1, z);
+
+    // only place if it's far enough and not colliding
+    if (pos.distanceTo(controls.getObject().position) < SAFE_SPAWN_DISTANCE) continue;
+    if (checkCollision(pos, null, true)) continue;
+
+    // spawn enemy
     const e = new THREE.Mesh(
-      new THREE.BoxGeometry(2,2,2),
-      new THREE.MeshStandardMaterial({ color:0x43cd80, map:enemyTexture })
+      new THREE.BoxGeometry(2, 2, 2),
+      new THREE.MeshStandardMaterial({ color: 0x43cd80, map: enemyTexture })
     );
     e.position.copy(pos);
     e.userData.target = getRandomTarget();
     scene.add(e);
     enemies.push(e);
   }
-}
 
-document.getElementById('startButton').addEventListener('click',()=>{
-  totalEnemies = parseInt(document.getElementById('enemyCount').value)||20;
-  document.getElementById('startScreen').style.display="none";
-  enemyShotCount=0; isPaused=false;
-  document.getElementById("counter").innerText="Kills: 0";
-  document.getElementById("timer").innerText="Time: 0.00s";
-  spawnPlayer(); createEnemies(totalEnemies);
-  controls.lock();
+  if (enemies.length < count) {
+    console.warn(`createEnemies: only spawned ${enemies.length}/${count} enemies after ${attempts} attempts`);
+  }
+}
+// Start/Restart UI
+document.getElementById('startButton').addEventListener('click', () => {
+  totalEnemies = parseInt(document.getElementById('enemyCount').value) || 20;
+  document.getElementById('startScreen').style.display = 'none';
+  enemyShotCount = 0; isPaused = false;
+  document.getElementById('counter').innerText = 'Kills: 0';
+  document.getElementById('timer').innerText = 'Time: 0.00s';
+  spawnPlayer(); createEnemies(totalEnemies); controls.lock();
+  startTime = Date.now(); gameOver = false;
+});
+document.getElementById('restartButton').addEventListener('click', () => {
+  document.getElementById('gameOverScreen').style.display = 'none';
+  document.getElementById('startScreen').style.display = 'flex';
+  isPaused = false; spawnPlayer();
 });
 
-document.getElementById('restartButton').addEventListener('click',()=>{
-  document.getElementById('gameOverScreen').style.display="none";
-  document.getElementById('startScreen').style.display="flex";
-  isPaused=false; spawnPlayer();
-});
+// Pause overlay
+const pauseScreen = document.createElement('div');
+pauseScreen.id = 'pauseScreen';
+pauseScreen.style.cssText = `position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:none;justify-content:center;align-items:center;flex-direction:column;color:white;font-family:Arial,sans-serif;font-size:24px;`;
+pauseScreen.innerHTML = `<div>Game Paused</div><button id="resumeButton" style="margin-top:20px;padding:10px 20px;font-size:18px;cursor:pointer;">Resume</button>`;
+document.body.appendChild(pauseScreen);
 
-function pauseGame() {
-  isPaused=true; controls.unlock(); pauseScreen.style.display='flex';
-}
-function resumeGame() {
-  isPaused=false; pauseScreen.style.display='none'; controls.lock();
-}
-document.getElementById('resumeButton').addEventListener('click', resumeGame);
-document.addEventListener('visibilitychange',()=> { if(document.hidden&&!isPaused) pauseGame(); });
-window.addEventListener('blur', ()=>{ if(!isPaused) pauseGame(); });
-window.addEventListener('focus',()=>{ if(isPaused) pauseScreen.style.display='flex'; });
+document.getElementById('resumeButton').addEventListener('click', () => { isPaused = false; pauseScreen.style.display = 'none'; controls.lock(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && !isPaused) { isPaused = true; controls.unlock(); pauseScreen.style.display = 'flex'; }});
+window.addEventListener('blur', () => { if (!isPaused) { isPaused = true; controls.unlock(); pauseScreen.style.display = 'flex'; }});
+window.addEventListener('focus', () => { if (isPaused) pauseScreen.style.display = 'flex'; });
 
-const enemySpotlight  = new THREE.SpotLight(0x66ff00,50,100,0.02,0.1);
+// Spotlight & crosshair
+const enemySpotlight = new THREE.SpotLight(0x66ff00, 50, 100, 0.02, 0.1);
 const crosshairTarget = new THREE.Object3D();
 scene.add(enemySpotlight); scene.add(crosshairTarget);
-enemySpotlight.target=crosshairTarget;
+enemySpotlight.target = crosshairTarget;
 
-const clock = new THREE.Clock();
-let startTime=null, gameOver=false;
-
+// Animate loop
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
   if (!isPaused) {
-    updateBullets();
-    updateEnemyMovement(dt);
-    updateMovement();
-    if (startTime!==null) {
-      const elapsed=(Date.now()-startTime)/1000;
-      document.getElementById("timer").innerText=`Time: ${elapsed.toFixed(2)}s`;
-      if (enemies.length===0 && !gameOver) {
-        gameOver=true;
-        document.getElementById("finalStats").innerText=
-          `Final Time: ${elapsed.toFixed(2)}s\nKills: ${enemyShotCount}`;
-        document.getElementById("gameOverScreen").style.display="flex";
+    updateBullets(); updateEnemyMovement(dt); updateMovement();
+    if (startTime !== null) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      document.getElementById('timer').innerText = `Time: ${elapsed.toFixed(2)}s`;
+      if (enemies.length === 0 && !gameOver) {
+        gameOver = true;
+        document.getElementById('finalStats').innerText = `Final Time: ${elapsed.toFixed(2)}s\nKills: ${enemyShotCount}`;
+        document.getElementById('gameOverScreen').style.display = 'flex';
       }
     }
   }
   enemySpotlight.position.copy(camera.position);
-  crosshairTarget.position.copy(
-    camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(50))
-  );
-  renderer.render(scene,camera);
+  crosshairTarget.position.copy(camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(50)));
+  renderer.render(scene, camera);
 }
-
 animate();
 
