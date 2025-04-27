@@ -209,8 +209,14 @@ let isPaused = false;
 ui.addEventListener('click', () => {
   if (!isPaused && !controls.isLocked) controls.lock();
 });
-controls.addEventListener('lock', () => ui.classList.add('disabled'));
-controls.addEventListener('unlock', () => ui.classList.remove('disabled'));
+controls.addEventListener('lock', () => {
+  ui.classList.add('disabled');
+  crosshair.style.display = 'block';
+});
+controls.addEventListener('unlock', () => {
+  ui.classList.remove('disabled');
+  crosshair.style.display = 'none';
+});
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && controls.isLocked && !isPaused) {
     isPaused = true;
@@ -218,6 +224,24 @@ document.addEventListener('keydown', e => {
     pauseScreen.style.display = 'flex';
   }
 });
+
+const crosshair = document.createElement('div');
+crosshair.id = 'crosshair';
+crosshair.style.cssText = `
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  display: none;
+  pointer-events: none;
+`;
+crosshair.innerHTML = `
+  <div style="position: absolute; top: 0; left: 9px; width: 2px; height: 20px; background: white;"></div>
+  <div style="position: absolute; top: 9px; left: 0; width: 20px; height: 2px; background: white;"></div>
+`;
+document.body.appendChild(crosshair);
 
 const gltfLoader = new GLTFLoader();
 let gunModel = null;
@@ -335,7 +359,7 @@ for (let r = 0; r < mazeGrid.length; r++) {
 })();
 
 const backgroundGeo = new THREE.PlaneGeometry(bounds.maxX - bounds.minX + 10, bounds.maxZ - bounds.minZ + 10);
-const backgroundMat = new THREE.MeshBasicMaterial({ color: 0x222222, opacity: 0.6, transparent: true }); // Reduced opacity for better marker visibility
+const backgroundMat = new THREE.MeshBasicMaterial({ color: 0x222222, opacity: 0.6, transparent: true });
 const background = new THREE.Mesh(backgroundGeo, backgroundMat);
 background.position.set(0, 0.05, 0);
 background.rotation.x = -Math.PI / 2;
@@ -356,7 +380,6 @@ function updateEnemyMarkers() {
   enemyMarkers.forEach(marker => minimapObjects.remove(marker));
   enemyMarkers.length = 0;
   enemies.forEach(enemy => {
-    // Add black border
     const border = new THREE.Mesh(enemyBorderGeo, minimapEnemyBorderMaterial);
     border.position.copy(enemy.position);
     border.position.y = 0.15;
@@ -465,11 +488,30 @@ const bulletMat = new THREE.MeshStandardMaterial({
   emissive: 0xe52b50, emissiveIntensity: 1
 });
 const gunshot = new Audio('assets/audio/gunshot.mp3');
+const hitSound = new Audio('assets/audio/hit.mp3');
 
 document.addEventListener('click', () => {
   if (!controls.isLocked || isPaused) return;
   gunshot.currentTime = 0;
   gunshot.play().catch(() => {});
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.set(camera.position, camera.getWorldDirection(new THREE.Vector3()));
+  const hits = raycaster.intersectObjects(enemies);
+  if (hits.length > 0) {
+    const enemy = hits[0].object;
+    const originalColor = enemy.material.color.getHex();
+    enemy.material.color.setHex(0xff0000); // Flash red
+    hitSound.currentTime = 0;
+    hitSound.play().catch(() => {});
+    setTimeout(() => {
+      scene.remove(enemy);
+      enemies.splice(enemies.indexOf(enemy), 1);
+      enemyShotCount++;
+      document.getElementById('counter').innerText = `Kills: ${enemyShotCount}`;
+    }, 100);
+  }
+
   const b = new THREE.Mesh(bulletGeo, bulletMat);
   const d = camera.getWorldDirection(new THREE.Vector3());
   const muzzleWorld = gunModel
@@ -485,19 +527,7 @@ function updateBullets() {
   if (isPaused) return;
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
-    const prev = b.position.clone();
     b.position.add(b.velocity);
-    const rc = new THREE.Raycaster(prev, b.velocity.clone().normalize());
-    const hits = rc.intersectObjects(enemies);
-    if (hits.length && hits[0].distance <= b.velocity.length()) {
-      scene.remove(hits[0].object);
-      enemies.splice(enemies.indexOf(hits[0].object), 1);
-      scene.remove(b);
-      bullets.splice(i, 1);
-      enemyShotCount++;
-      document.getElementById('counter').innerText = `Kills: ${enemyShotCount}`;
-      continue;
-    }
     if (b.position.length() > 100) {
       scene.remove(b);
       bullets.splice(i, 1);
@@ -563,7 +593,7 @@ function createEnemies(count) {
     );
     if (pos.distanceTo(controls.getObject().position) < SAFE_SPAWN_DISTANCE) continue;
     if (checkCollision(pos, null, true)) continue;
-    const enemy = new THREE.Mesh(enemyGeo, enemyMat);
+    const enemy = new THREE.Mesh(enemyGeo, enemyMat.clone()); // Clone material for each enemy
     enemy.position.copy(pos);
     enemy.userData.target = getRandomTarget();
     scene.add(enemy);
@@ -620,11 +650,6 @@ window.addEventListener('focus', () => {
   if (isPaused) pauseScreen.style.display = 'flex';
 });
 
-const enemySpotlight = new THREE.SpotLight(0xffff99, 20, 100, 0.05, 0.3);
-const crosshairTarget = new THREE.Object3D();
-scene.add(enemySpotlight, crosshairTarget);
-enemySpotlight.target = crosshairTarget;
-
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -644,10 +669,6 @@ function animate() {
       }
     }
   }
-  enemySpotlight.position.copy(camera.position);
-  crosshairTarget.position.copy(
-    camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(50))
-  );
 
   playerMarker.position.copy(controls.getObject().position);
   playerMarker.position.y = 0.2;
