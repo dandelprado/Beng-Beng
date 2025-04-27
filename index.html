@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
     <head>
-        <title>FPS - Designing the Floor with Boundary</title>
+        <title>Beng-Beng</title>
         <meta charset="utf-8" />
         <meta
             name="viewport"
@@ -18,12 +18,11 @@
             </script>
     </head>
 
-      
     <body style="touch-action: none">
         <div id="threejsContainer"></div>
         <div id="ui">Click on the screen to start/resume</div>
 
-        <div id ="startScreen" class="overlay">
+        <div id="startScreen" class="overlay">
             <h1>Beng Beng Challenge</h1>
             <label for="enemyCount">Number of Enemies:</label>
             <input type="number" id="enemyCount" value="20" min="1">
@@ -36,12 +35,21 @@
             <button id="restartButton">Restart</button>
         </div>
 
+        <div id="pauseScreen" style="display: none;">
+            <div>Game Paused</div>
+            <button id="resumeButton">Resume</button>
+        </div>
+
+        <div id="crosshair" style="display: none;">
+            <div class="crosshair-vertical"></div>
+            <div class="crosshair-horizontal"></div>
+        </div>
+
         <div id="hud">
             <div id="counter">Kills: 0</div>
             <div id="timer">Time: 0.00s</div>
         </div>
+
+        <script type="module" src="js/main.js"></script>
     </body>
-
-    <script type="module" src="js/main.js"></script>
-
 </html>
