@@ -41,7 +41,6 @@ function generateDynamicMaze(areaSize) {
     if (isValidRect(x, z, w, h)) {
       areas.push({ x, z, width: w, height: h, isRoom });
       if (isRoom) {
-        // draw room walls in grid
         for (let c = x - 1; c <= x + w; c++) {
           grid[z - 1][c] = 1;
           grid[z + h][c] = 1;
@@ -141,22 +140,30 @@ function generateDynamicMaze(areaSize) {
 }
 
 const textureLoader = new THREE.TextureLoader();
-const enemyTexture  = textureLoader.load('assets/alien.jpg');
-const groundTexture = textureLoader.load('assets/floor.jpg');
-const mazeTexture   = textureLoader.load('assets/maze.jpg');
-const wallTexture   = textureLoader.load('assets/wall.png');
+const enemyTexture  = textureLoader.load('assets/steampunk_gears.png');
+const groundTexture = textureLoader.load('assets/rusted_metal.png');
+const mazeTexture   = textureLoader.load('assets/steampunk_wall.png');
+const wallTexture   = textureLoader.load('assets/steampunk_boundary.png');
 wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
 wallTexture.repeat.set(10, 2);
+
+const enemyGeo = new THREE.CapsuleGeometry(1, 1.5, 4, 8);
+const enemyMat = new THREE.MeshStandardMaterial({
+  color: 0x8888ff,
+  metalness: 0.6,
+  roughness: 0.4,
+  map: enemyTexture,
+  emissive: 0x222222,
+  emissiveIntensity: 0.2
+});
 
 const scene    = new THREE.Scene();
 const camera   = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
 camera.position.copy(INITIAL_SPAWN);
-
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.getElementById('threejsContainer').appendChild(renderer.domElement);
-
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
@@ -165,30 +172,34 @@ window.addEventListener('resize', () => {
 
 const sky = new Sky();
 sky.scale.setScalar(450000);
-sky.material.uniforms['sunPosition'].value.setFromSphericalCoords(1, degToRad(90), degToRad(180));
+sky.material.uniforms['turbidity'].value = 30;
+sky.material.uniforms['rayleigh'].value = 0.3;
+sky.material.uniforms['mieCoefficient'].value = 0.03;
+sky.material.uniforms['mieDirectionalG'].value = 0.95;
+sky.material.uniforms['sunPosition'].value.setFromSphericalCoords(1, degToRad(75), degToRad(180));
 scene.add(sky);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.1));
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+const ambientLight = new THREE.AmbientLight(0xffb380, 0.5);
+scene.add(ambientLight);
+let flickerTime = 0;
+function flickerAmbientLight(dt) {
+  flickerTime += dt;
+  ambientLight.intensity = 0.5 + Math.sin(flickerTime * 5) * 0.1;
+}
+const dirLight = new THREE.DirectionalLight(0xffa500, 0.4);
 dirLight.position.set(5, 10, 5);
 scene.add(dirLight);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
-
-const bulletLight = new THREE.PointLight(0xffffff, 1, 10);
-scene.add(bulletLight);
+scene.fog = new THREE.FogExp2(0x4a3726, 0.01);
 
 const controls = new PointerLockControls(camera, renderer.domElement);
 scene.add(controls.getObject());
-
 const ui = document.getElementById('ui');
 let isPaused = false;
-
 ui.addEventListener('click', () => {
   if (!isPaused && !controls.isLocked) controls.lock();
 });
 controls.addEventListener('lock',   () => ui.classList.add('disabled'));
 controls.addEventListener('unlock', () => ui.classList.remove('disabled'));
-
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && controls.isLocked && !isPaused) {
     isPaused = true;
@@ -197,57 +208,41 @@ document.addEventListener('keydown', e => {
   }
 });
 
-
-let gunModel = null;
 const gltfLoader = new GLTFLoader();
-
+let gunModel = null;
 gltfLoader.load(
   'assets/models/smith_wesson_cyberpunk_revolver_gltf/scene.gltf',
   (gltf) => {
     gunModel = gltf.scene;
-
     const pivot = new THREE.Object3D();
     camera.add(pivot);
     pivot.add(gunModel);
-
-    const bbox   = new THREE.Box3().setFromObject(gunModel);
+    const bbox = new THREE.Box3().setFromObject(gunModel);
     const center = bbox.getCenter(new THREE.Vector3());
     gunModel.position.sub(center);
-
-    const size   = bbox.getSize(new THREE.Vector3());
+    const size = bbox.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    const desiredSize = 0.8;
-    gunModel.scale.setScalar(desiredSize / maxDim);
-
+    pivot.scale.setScalar(0.8 / maxDim);
     pivot.rotation.order = 'ZYX';
-    pivot.rotation.set(
-      0,
-      Math.PI / 2,
-      0
-    );
-
+    pivot.rotation.set(0, Math.PI / 2, 0);
     pivot.position.set(0.3, -0.3, -0.7);
-
-    console.log('Revolver positioned for FPS view:', pivot);
   },
   undefined,
-  (err) => console.error('GLTF load error:', err)
+  (err) => console.error('Revolver load error:', err)
 );
-
 
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ),
-  new THREE.MeshStandardMaterial({ map: groundTexture })
+  new THREE.MeshStandardMaterial({ map: groundTexture, roughness: 0.8, metalness: 0.5 })
 );
 ground.rotation.x = -Math.PI/2;
 scene.add(ground);
 
 const mazeWalls = [];
-const mazeMat   = new THREE.MeshStandardMaterial({ map: mazeTexture });
-const mazeGeo   = new THREE.BoxGeometry(4, 2, 4);
-const platformMat = new THREE.MeshStandardMaterial({ map: mazeTexture });
+const mazeMat  = new THREE.MeshStandardMaterial({ map: mazeTexture, roughness: 0.7, metalness: 0.6 });
+const mazeGeo  = new THREE.BoxGeometry(4, 2, 4);
+const platformMat = new THREE.MeshStandardMaterial({ map: mazeTexture, roughness: 0.7, metalness: 0.6 });
 const platformGeo = new THREE.BoxGeometry(4, 1, 4);
-
 const areaSize = 100;
 const { grid: mazeGrid, offsetX, offsetZ } = generateDynamicMaze(areaSize);
 
@@ -267,11 +262,10 @@ for (let r = 0; r < mazeGrid.length; r++) {
     }
   }
 }
-
 (function() {
   const h = 4, t = 2, half = t/2;
   function mk(w,hgt,th,x,y,z) {
-    const mat = new THREE.MeshStandardMaterial({ map: wallTexture });
+    const mat = new THREE.MeshStandardMaterial({ map: wallTexture, roughness: 0.6, metalness: 0.5 });
     const m = new THREE.Mesh(new THREE.BoxGeometry(w,hgt,th), mat);
     m.position.set(x,y,z);
     scene.add(m);
@@ -292,7 +286,6 @@ document.addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
   if (keys.hasOwnProperty(k)) { e.preventDefault(); keys[k] = false; }
 });
-
 function checkCollision(pos, entity=null, isEnemy=false) {
   const r = isEnemy ? ENEMY_RADIUS : PLAYER_RADIUS;
   for (const wall of mazeWalls) {
@@ -373,16 +366,13 @@ document.addEventListener('click', () => {
   gunshot.currentTime = 0; gunshot.play().catch(()=>{});
   const b = new THREE.Mesh(bulletGeo, bulletMat);
   const d = camera.getWorldDirection(new THREE.Vector3());
-  // muzzle position
-  const muzzleWorld = new THREE.Vector3();
-  if (gunModel) muzzleWorld.setFromMatrixPosition(gunModel.matrixWorld);
-  else muzzleWorld.copy(camera.position);
-  const spawnPos = muzzleWorld.clone().add(d.clone().multiplyScalar(0.8));
-  b.position.copy(spawnPos);
+  const muzzleWorld = gunModel
+    ? new THREE.Vector3().setFromMatrixPosition(gunModel.matrixWorld)
+    : camera.position.clone();
+  b.position.copy(muzzleWorld).add(d.clone().multiplyScalar(0.8));
   b.velocity = d.multiplyScalar(BULLET_SPEED);
   bullets.push(b);
   scene.add(b);
-  bulletLight.position.copy(b.position);
 });
 
 function updateBullets() {
@@ -391,7 +381,6 @@ function updateBullets() {
     const b = bullets[i];
     const prev = b.position.clone();
     b.position.add(b.velocity);
-    bulletLight.position.copy(b.position);
     const rc = new THREE.Raycaster(prev, b.velocity.clone().normalize());
     const hits = rc.intersectObjects(enemies);
     if (hits.length && hits[0].distance <= b.velocity.length()) {
@@ -430,8 +419,7 @@ function spawnPlayer() {
   const empty = [];
   mazeGrid.forEach((row, r) => {
     row.forEach((cell, c) => {
-      if (cell === 0) empty.push({ r, c });
-    });
+      if (cell === 0) empty.push({ r, c });    });
   });
   let pos = null;
   for (let i = 0; i < 50; i++) {
@@ -458,19 +446,19 @@ function createEnemies(count) {
   while (enemies.length < count && attempts < count * 5) {
     attempts++;
     const pick = empty[Math.floor(Math.random()*empty.length)];
-    const x = offsetX + pick.c*4 + (Math.random()-0.5)*2;
-    const z = offsetZ + pick.r*4 + (Math.random()-0.5)*2;
-    const pos = new THREE.Vector3(x,1,z);
+    const pos = new THREE.Vector3(
+      offsetX + pick.c*4 + (Math.random()-0.5)*2,
+      1,
+      offsetZ + pick.r*4 + (Math.random()-0.5)*2
+    );
     if (pos.distanceTo(controls.getObject().position) < SAFE_SPAWN_DISTANCE) continue;
     if (checkCollision(pos,null,true)) continue;
-    const e = new THREE.Mesh(
-      new THREE.BoxGeometry(2,2,2),
-      new THREE.MeshStandardMaterial({ color:0x43cd80, map:enemyTexture })
-    );
-    e.position.copy(pos);
-    e.userData.target = getRandomTarget();
-    scene.add(e);
-    enemies.push(e);
+
+    const enemy = new THREE.Mesh(enemyGeo, enemyMat);
+    enemy.position.copy(pos);
+    enemy.userData.target = getRandomTarget();
+    scene.add(enemy);
+    enemies.push(enemy);
   }
 }
 
@@ -501,13 +489,11 @@ pauseScreen.style.cssText = `
   position:absolute;top:0;left:0;width:100%;height:100%;
   background:rgba(0,0,0,0.7);display:none;
   justify-content:center;align-items:center;
-  flex-direction:column;color:white;
-  font-family:Arial,sans-serif;font-size:24px;
+  flex-direction:column;color:white;font-family:Arial,sans-serif;font-size:24px;
 `;
 pauseScreen.innerHTML = `
   <div>Game Paused</div>
-  <button id="resumeButton" style="margin-top:20px;
-    padding:10px 20px;font-size:18px;cursor:pointer;">
+  <button id="resumeButton" style="margin-top:20px;padding:10px 20px;font-size:18px;cursor:pointer;">
     Resume
   </button>`;
 document.body.appendChild(pauseScreen);
@@ -517,7 +503,6 @@ document.getElementById('resumeButton').addEventListener('click', () => {
   pauseScreen.style.display = 'none';
   controls.lock();
 });
-
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && !isPaused) {
     isPaused = true;
@@ -536,7 +521,7 @@ window.addEventListener('focus', () => {
   if (isPaused) pauseScreen.style.display = 'flex';
 });
 
-const enemySpotlight  = new THREE.SpotLight(0x66ff00, 50, 100, 0.02, 0.1);
+const enemySpotlight = new THREE.SpotLight(0xffff99, 20, 100, 0.05, 0.3);
 const crosshairTarget = new THREE.Object3D();
 scene.add(enemySpotlight, crosshairTarget);
 enemySpotlight.target = crosshairTarget;
@@ -548,6 +533,7 @@ function animate() {
     updateBullets();
     updateEnemyMovement(dt);
     updateMovement();
+    flickerAmbientLight(dt);
     if (startTime !== null) {
       const elapsed = (Date.now() - startTime) / 1000;
       document.getElementById('timer').innerText = `Time: ${elapsed.toFixed(2)}s`;
@@ -566,3 +552,4 @@ function animate() {
   renderer.render(scene, camera);
 }
 animate();
+
