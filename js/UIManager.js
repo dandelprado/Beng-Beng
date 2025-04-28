@@ -1,6 +1,7 @@
 class UIManager {
-  constructor(player) {
+  constructor(player, sceneSetup) {
     this.player = player;
+    this.sceneSetup = sceneSetup;
     this.isPaused = false;
     this.setupUI();
   }
@@ -10,7 +11,6 @@ class UIManager {
     const crosshair = document.getElementById('crosshair');
     const pauseScreen = document.getElementById('pauseScreen');
 
-    // Handle pointer lock interactions
     ui.addEventListener('click', () => {
       if (!this.isPaused && !this.player.controls.isLocked) this.player.controls.lock();
     });
@@ -25,7 +25,6 @@ class UIManager {
       crosshair.style.display = 'none';
     });
 
-    // Pause/resume handling
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && this.player.controls.isLocked && !this.isPaused) {
         this.isPaused = true;
@@ -60,7 +59,6 @@ class UIManager {
       if (this.isPaused) pauseScreen.style.display = 'flex';
     });
 
-    // Start and restart buttons
     document.getElementById('startButton').addEventListener('click', () => {
       const totalEnemies = parseInt(document.getElementById('enemyCount').value) || 20;
       document.getElementById('startScreen').style.display = 'none';
@@ -77,26 +75,29 @@ class UIManager {
       this.isPaused = false;
       if (this.onRestart) this.onRestart();
     });
+
+    const modeToggleButton = document.getElementById('modeToggleButton');
+    modeToggleButton.innerText = this.sceneSetup.isDarkMode ? 'Toggle Light Mode' : 'Toggle Dark Mode';
+    modeToggleButton.addEventListener('click', () => {
+      this.sceneSetup.toggleDarkMode();
+      modeToggleButton.innerText = this.sceneSetup.isDarkMode ? 'Toggle Light Mode' : 'Toggle Dark Mode';
+    });
   }
 
-  // Method to update kills counter
   updateKills(kills) {
     document.getElementById('counter').innerText = `Kills: ${kills}`;
   }
 
-  // Method to update timer
   updateTimer(elapsed) {
     document.getElementById('timer').innerText = `Time: ${elapsed.toFixed(2)}s`;
   }
 
-  // Method to show game over screen
   showGameOver(finalTime, kills) {
     document.getElementById('finalStats').innerText =
       `Final Time: ${finalTime.toFixed(2)}s\nKills: ${kills}`;
     document.getElementById('gameOverScreen').style.display = 'flex';
   }
 
-  // Methods to set callbacks for start and restart events
   setOnStart(callback) {
     this.onStart = callback;
   }

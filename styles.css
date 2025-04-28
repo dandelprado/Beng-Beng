@@ -63,6 +63,21 @@
     margin-bottom: 5px;
 }
 
+#hud button {
+    font-size: 18px;
+    padding: 5px 10px;
+    margin-top: 10px;
+    cursor: pointer;
+    background-color: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: #fff;
+    border-radius: 5px;
+}
+
+#hud button:hover {
+    background-color: rgba(255, 255, 255, 0.4);
+}
+
 #pauseScreen {
     position: absolute;
     top: 0;

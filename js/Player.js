@@ -8,10 +8,11 @@ const MOVE_SPEED = 0.2;
 const PLAYER_RADIUS = 0.5;
 
 class Player {
-  constructor(scene, camera) {
+  constructor(scene, camera, sceneSetup) {
+    this.sceneSetup = sceneSetup;
     this.controls = new PointerLockControls(camera, document.body);
     scene.add(this.controls.getObject());
-    this.keys = { w: false, a: false, s: false, d: false };
+    this.keys = { w: false, a: false, s: false, d: false, f: false, l: false };
     this.setupControls();
     this.loadGun(camera);
   }
@@ -22,6 +23,12 @@ class Player {
       if (this.keys.hasOwnProperty(k)) {
         e.preventDefault();
         this.keys[k] = true;
+        if (k === 'f' && this.controls.isLocked) {
+          this.sceneSetup.toggleFlashlight();
+        }
+        if (k === 'l' && this.controls.isLocked) {
+          this.sceneSetup.toggleDarkMode();
+        }
       }
     });
     document.addEventListener('keyup', e => {
