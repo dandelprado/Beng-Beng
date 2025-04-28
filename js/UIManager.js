@@ -12,7 +12,9 @@ class UIManager {
     const pauseScreen = document.getElementById('pauseScreen');
 
     ui.addEventListener('click', () => {
-      if (!this.isPaused && !this.player.controls.isLocked) this.player.controls.lock();
+      if (!this.isPaused && !this.player.controls.isLocked) {
+        this.player.controls.lock();
+      }
     });
 
     this.player.controls.addEventListener('lock', () => {
@@ -25,7 +27,7 @@ class UIManager {
       crosshair.style.display = 'none';
     });
 
-    document.addEventListener('keydown', e => {
+    document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.player.controls.isLocked && !this.isPaused) {
         this.isPaused = true;
         this.player.controls.unlock();
@@ -56,7 +58,9 @@ class UIManager {
     });
 
     window.addEventListener('focus', () => {
-      if (this.isPaused) pauseScreen.style.display = 'flex';
+      if (this.isPaused) {
+        pauseScreen.style.display = 'flex';
+      }
     });
 
     document.getElementById('startButton').addEventListener('click', () => {
@@ -66,21 +70,18 @@ class UIManager {
       document.getElementById('counter').innerText = 'Kills: 0';
       document.getElementById('timer').innerText = 'Time: 0.00s';
       this.player.controls.lock();
-      if (this.onStart) this.onStart(totalEnemies);
+      if (this.onStart) {
+        this.onStart(totalEnemies);
+      }
     });
 
     document.getElementById('restartButton').addEventListener('click', () => {
       document.getElementById('gameOverScreen').style.display = 'none';
       document.getElementById('startScreen').style.display = 'flex';
       this.isPaused = false;
-      if (this.onRestart) this.onRestart();
-    });
-
-    const modeToggleButton = document.getElementById('modeToggleButton');
-    modeToggleButton.innerText = this.sceneSetup.isDarkMode ? 'Toggle Light Mode' : 'Toggle Dark Mode';
-    modeToggleButton.addEventListener('click', () => {
-      this.sceneSetup.toggleDarkMode();
-      modeToggleButton.innerText = this.sceneSetup.isDarkMode ? 'Toggle Light Mode' : 'Toggle Dark Mode';
+      if (this.onRestart) {
+        this.onRestart();
+      }
     });
   }
 

@@ -7,50 +7,50 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
             />
-            <link rel="stylesheet" type="text/css" href="styles.css" media="all" />
-
-            <script type="importmap">
-                {
-                    "imports": {
-                        "three": "https://unpkg.com/three@0.153.0/build/three.module.js"
-                    }
+        <link rel="stylesheet" type="text/css" href="styles.css" media="all" />
+        <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://unpkg.com/three@0.153.0/build/three.module.js"
                 }
-            </script>
+            }
+        </script>
     </head>
-
     <body style="touch-action: none">
         <div id="threejsContainer"></div>
         <div id="ui">Click on the screen to start/resume</div>
-
         <div id="startScreen" class="overlay">
-            <h1>Beng Beng Challenge</h1>
+            <h1>Beng-Beng Challenge</h1>
             <label for="enemyCount">Number of Enemies:</label>
             <input type="number" id="enemyCount" value="20" min="1">
+            <p class="controls-info">
+                Controls:<br>
+                L: Toggle between light/dark mode<br>
+                F: Turn on/off flashlight (dark mode only)<br>
+                WASD: Move<br>
+                Mouse: Look around<br>
+                Click: Shoot<br>
+                Esc: Pause
+            </p>
             <button id="startButton">Start Game</button>
         </div>
-
         <div id="gameOverScreen" class="overlay" style="display: none;">
             <h1>Game Over</h1>
             <div id="finalStats"></div>
             <button id="restartButton">Restart</button>
         </div>
-
         <div id="pauseScreen" style="display: none;">
             <div>Game Paused</div>
             <button id="resumeButton">Resume</button>
         </div>
-
         <div id="crosshair" style="display: none;">
             <div class="crosshair-vertical"></div>
             <div class="crosshair-horizontal"></div>
         </div>
-
         <div id="hud">
             <div id="counter">Kills: 0</div>
             <div id="timer">Time: 0.00s</div>
-            <button id="modeToggleButton">Toggle Dark Mode</button>
         </div>
-
         <script type="module" src="js/main.js"></script>
-    <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9376ec281b6dc013',t:'MTc0NTg0NzExMy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+    </body>
 </html>

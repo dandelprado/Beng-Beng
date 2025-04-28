@@ -44,6 +44,7 @@ class SceneSetup {
 
     this.enemy = null;
     this.minimap = null;
+    this.uiManager = null;
     this.setupScene();
   }
 
@@ -53,6 +54,10 @@ class SceneSetup {
 
   setMinimap(minimap) {
     this.minimap = minimap;
+  }
+
+  setUIManager(uiManager) {
+    this.uiManager = uiManager;
   }
 
   setupScene() {
@@ -112,7 +117,7 @@ class SceneSetup {
       new THREE.Vector3(40, 10, 40),
       new THREE.Vector3(0, 10, 0),
     ];
-    spotlightPositions.forEach(pos => {
+    spotlightPositions.forEach((pos) => {
       const spotlight = new THREE.SpotLight(0xffa500, 2, 50, Math.PI / 4, 0.5, 1);
       spotlight.position.copy(pos);
       spotlight.target = new THREE.Object3D();
@@ -161,6 +166,12 @@ class SceneSetup {
   toggleDarkMode() {
     this.isDarkMode = !this.isDarkMode;
     this.updateLighting();
+    // Force UI update after mode change
+    if (this.uiManager) {
+      setTimeout(() => {
+        this.uiManager.updateModeHint();
+      }, 0);
+    }
   }
 
   updateLighting() {
@@ -168,7 +179,7 @@ class SceneSetup {
       this.ambientLight.intensity = 0.02;
       this.dirLight.intensity = 0.01;
       this.scene.fog.density = 0.05;
-      this.fixedSpotlights.forEach(spotlight => spotlight.visible = true);
+      this.fixedSpotlights.forEach((spotlight) => (spotlight.visible = true));
       this.scene.remove(this.lightModeSky);
       this.scene.add(this.darkModeSky);
       this.darkModeSky.material.needsUpdate = true;
@@ -187,7 +198,7 @@ class SceneSetup {
       this.ambientLight.intensity = this.originalAmbientIntensity;
       this.dirLight.intensity = this.originalDirLightIntensity;
       this.scene.fog.density = 0.01;
-      this.fixedSpotlights.forEach(spotlight => spotlight.visible = false);
+      this.fixedSpotlights.forEach((spotlight) => (spotlight.visible = false));
       this.spotLight.visible = false;
       this.scene.remove(this.darkModeSky);
       this.scene.add(this.lightModeSky);
@@ -209,6 +220,12 @@ class SceneSetup {
         console.warn('Minimap instance not set in SceneSetup');
       }
     }
+    // Force UI update after lighting changes
+    if (this.uiManager) {
+      setTimeout(() => {
+        this.uiManager.updateModeHint();
+      }, 0);
+    }
   }
 
   toggleFlashlight() {
@@ -217,9 +234,13 @@ class SceneSetup {
     } else {
       this.spotLight.visible = false;
     }
+    if (this.uiManager) {
+      this.uiManager.updateModeHint();
+    }
   }
 
   flickerAmbientLight(dt) {
+    // Placeholder for ambient light flicker effect
   }
 }
 

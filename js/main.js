@@ -18,6 +18,7 @@ gameLogic.mazeWalls = [...sceneSetup.setupBoundaries(), ...mazeGenerator.mazeWal
 
 sceneSetup.setEnemy(enemy);
 sceneSetup.setMinimap(minimap);
+sceneSetup.setUIManager(uiManager);
 
 function animate() {
   requestAnimationFrame(animate);
